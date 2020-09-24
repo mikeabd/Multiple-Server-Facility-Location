@@ -1,0 +1,1516 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! Multiple Server Congested Facility Location Problem !!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!Programmed by Hossein Abdollahnejad Barough 
+!Jan 01 2012 till March 27 2012
+
+model CPLP
+uses "mmxprs"; !gain access to the Xpress-Optimizer solver
+uses "mmsystem"
+
+declarations !General
+
+I: integer 			!Number of Demands
+J: integer 			!Number of Facilities
+M: real			    ! Large Number
+Ca: real			! WIP Coefficients
+Cs: real			! WIP Coefficients
+W: integer			! Total WIP
+ss: real			! Usage presentage
+File='p2'
+!File='Case.txt'
+!File='20x15.txt'
+!File='..\Newdata\30x10.txt'
+!File='instancesp35.txt'
+end-declarations
+
+fopen(File ,F_INPUT)
+readln(J, I)
+!readln(I, J)
+writeln("I: ",I, " J:", J)
+
+M:= 1000000
+ss:= 2.0
+Ca:= 0.25
+Cs:= 0.25
+tav:= 2.0
+
+declarations 								!Objective Function
+	
+	x: array (1..I, 1..J) of integer 		!Demand i assigned to facility j
+	y: array (1..J) of integer				!Faciluity j is Open or not
+	Cost: array (1..I,1..J) of real   		!Transportation Cost
+	Cap: array (1..J) of real  				!Capacity of each Facility 
+	m_Cap: array (1..J) of real  				!Capacity of each Facility 
+	Dem: array (1..I) of real				!Demand
+	Fix: array (1..J) of real				!Fixed cost for Facility
+	InCost: array (1..J) of real			!Instalation Cost
+	T: array (1..J) of real					!Waiting Cost for Facility j
+	m_server: array (1..J) of integer		!Number of the Servers at each facility
+	Server: array (1..J) of integer
+	T_server: integer
+	Mu: real								!Total Capacity
+	F: real									!Total Clearing Function
+	Ord: array (1..I) of integer
+	Pi: array (1..I) of real				!First multiplier
+	!Omega: real							!Secound Multiplier
+	
+	Dem_tmp: real							!Temporary Variable for Demands
+	Ord_tmp: integer						!Temporary variable for Orders
+	Cost_tmp: array (1..I, 1..J) of real	!Temporary Variable for Costs
+	InCost_tmp:real							!Temporary Variable for InCost
+	c_Cap: array (1..J) of real
+	
+	OV_SSTP: real							!the cost of SSTP current solution
+	OV_Reg: real							!objective value of the regret heuristic
+	OV_LarDem: real							!objective value of the largest demand heuristic	
+	
+	P: integer								!total number of servers
+	C: integer								
+	UB: real								!Upper bound
+	LB: real								!Lower bound
+	Gap: real								!the Gap between Lower bound and Upper bound
+	tt: real								!teta for the first multiplier
+	epsi: real								!epsilon for the secound multiplier
+	X: integer
+	!H: real
+		
+	Max_cost: real
+	tbl_A: array(1..J) of real
+	OV_DyPro: real
+	Fou1: integer
+	Fou2: integer
+	
+	OV_sub: array (1..J) of real
+	OV_sum: real
+	serv_sum: real
+	Sol_sstp: array (1..I) of integer		!Solutions from SSTP
+	Sub_sum: array (1..I) of real
+	sum_server: integer						!total number of alocated servers
+	Sum_A: real								!sum A in Dynamic Programming Table
+	Sol_sub: array (1..I,1..J) of integer	
+	Soldp: array (1..I, 1..J) of integer	!Dyanamic Programming Sunbproblem Binary Solution
+	Sol: array (1..I) of integer			!Single Source Transportation Prblem Binary Solution
+	Fix_y: array (1..J) of integer			!Solution from the Subproblems for the Fixed Facilities
+    Fix_o: array (1..J) of integer
+
+	MS: array (1..I) of real				!First Modified Subgradient 
+	MSS: real								!Secound Modified Subgradient
+	Lamb: real								!Lambada parameter
+	Delta: real								!Delta parameter
+	C_MS: real								!Cumulative First Modifier
+	VK: real								
+	UK: real
+	
+	c_Dem: array (1..J) of real 
+	Util: array (1..J) of real
+	Wip: array (1..J) of real
+	
+	R_Sol: array(1..I) of integer
+	R_c_Dem: array (1..J) of real 
+	R_Util: array (1..J) of real
+	R_Wip: array (1..J) of real
+	
+	L_Sol: array(1..I) of integer
+	L_c_Dem: array (1..J) of real 
+	L_Util: array (1..J) of real
+	L_Wip: array (1..J) of real
+	
+	c_Fix_o: array(1..J) of integer
+	c_m_server: array(1..J) of integer
+	m_J: integer
+	Done: integer
+	m_W: real
+end-declarations
+
+
+forward procedure DyPro (Dem: array (range) of real,
+						Cost: array (range, range) of real,
+						m_server: array (range) of integer,
+						P: integer,
+						Cap: array (range) of real,
+						Soldp: array (range, range) of integer)
+						
+forward procedure SSTP_Reg (InCost: array (range) of real,
+							Cost: array(range, range) of real,
+							m_Cap: array (range) of real,
+							Dem: array(range) of real,
+							Fix_o: array (range) of integer,
+							Sol: array (range) of integer,
+							c_Dem: array (range) of real,
+							Util: array (range) of real,
+							Wip: array (range) of real,
+							Server: array (range) of integer)
+							
+
+forward procedure SSTP_LarDem (InCost: array (range) of real,
+								Cost: array(range, range) of real,
+								m_Cap: array (range) of real,
+								Dem: array(range) of real,
+								Fix_o: array (range) of integer,
+								Sol: array (range) of integer,
+								c_Dem: array (range) of real,
+								Util: array (range) of real,
+								Wip: array (range) of real,
+								Server: array (range) of integer)
+
+forward function Newton(W: real, M: integer, Mu: real): real								
+								
+
+!setrandseed(4)
+!Total number of servers
+RU:=0.8
+!P:= 400
+
+forall(j in 1..J) readln(Cap(j), Fix(j))
+!forall (j in 1..J) writeln ("Cap(",j,")=", Cap(j))
+!forall( j in 1..J) writeln ("Fix(",j,")=", Fix (j))
+
+forall(i in 1..I) read(Dem(i))
+forall(i in 1..I) forall(j in 1..J) read(Cost(i,j))
+fclose(F_INPUT)
+
+forall (j in 1..J) Cap(j):= Cap(j)
+forall(i in 1..I) Dem(i):= Dem(i)
+
+!Total WIP
+W:=ceil((sum(i in 1..I) Dem(i))*0.05)
+writeln("Target WIP sets to ", W)
+writeln("W on Total Demand Ratio=", W/sum(i in 1..I) Dem(i))
+starttime:= gettime
+!!!!!!!!!!!!!!!!!!!!!!!!!!!! Demand and Relatives Cost Ordering !!!!!!!!!!!!!!!!
+
+forall(i in 1..I) Ord(i):= i
+!forall (i in 1..I) writeln("Ord(i)=", Ord(i))
+
+!Temprary variable for sorting the costs
+forall(i in 1..I, j in 1..J) Cost_tmp(i,j):= Cost(i,j)
+
+!Demand Accending Sorting
+forall(B in 1..I-1) do
+	forall(i in 1..I-B) do
+		if Dem(i) > Dem(i+1) then
+			Dem_tmp:= Dem(i)
+			Dem(i):= Dem(i+1)
+			Dem(i+1):= Dem_tmp		
+			Ord_tmp:= Ord(i)
+			Ord(i):= Ord(i+1)
+			Ord(i+1):= Ord_tmp
+		end-if
+	end-do	
+end-do
+
+forall(i in 1..I) writeln ("Dem(",i,")= ", Dem(i))
+
+forall(i in 1..I, j in 1..J) do 
+	Cost(i,j):= Cost_tmp(Ord(i),j)
+end-do	
+
+!Ready Cost Data
+forall(i in 1..I, j in 1..J) do
+		if Dem(i) > Cap(j) then
+			Cost_tmp(i,j):= M
+		else
+			Cost_tmp(i,j):= Cost(i,j)
+		end-if			
+end-do	
+
+!forall (i in 1..I, j in 1..J) writeln ("Cost (",i,",", j,")=", Cost_tmp(i,j))
+
+!Instalation Cost
+forall(j in 1..J) do
+	InCost(j):= Fix(j)*.1
+	T(j):= Fix(j)*.01
+end-do
+!forall( j in 1..J) writeln ("InCost(",j,")=", InCost(j))
+
+!Instalation Cost Ascending Sorting
+forall(B in 1..J-1) do
+	forall(j in 1..J-B) do
+		if InCost(j) > InCost(j+1) then
+			InCost_tmp:= InCost(j)
+			InCost(j):= InCost(j+1)
+			InCost(j+1):= InCost_tmp		
+		end-if
+	end-do	
+end-do
+
+!Checking the demands feasibility
+!Total Capacity
+Mu:= ceil (sum(j in 1..J) Cap(j)/J)*0.1
+writeln("Mu= ",Mu)
+
+Total_demand:= sum(i in 1..I) Dem(i)
+P:=ceil(Total_demand/(Mu*RU))
+
+m_W:=M
+!P:=P-1
+!while (m_W > W) do
+!	P:=P+1
+!	m_RU:=Total_demand/(P*Mu)
+!	writeln("m_RU:= ",m_RU," P= ",P," m_W= ",m_W," W= ",W)
+!	!m_W:= (Ca + m_RU^2*Cs)/(2*(1-m_RU))+P*m_RU
+!	m_W:= m_RU^(sqrt(2*(P+1)))/(1-m_RU) + P*m_RU
+!end-do
+	
+writeln("Number of Servers=", P)
+!Total Clearing Function
+!F:=(W+P - sqrt( (W+P)^2+ (2*P-Cs)*(Ca-2*W)))*P*Mu /(2*P-Cs)
+F:= Newton(W, P, Mu)
+writeln("F= ",F)
+
+Gap:=((F-Total_demand)/F)*100
+writeln("GAP=", Gap)
+
+writeln("Total_daman: ", Total_demand, " F= ",F)
+
+if (Total_demand > F) then
+	writeln("=================== infeasible solution======")
+	exit(1)
+end-if
+
+!Initialize parameters
+LB:=-1*M
+check:=0
+s_check:=0
+Gap:=M
+Dem_sum:= sum(i in 1..I) Dem(i)
+forall(j in 1..J) m_server(j):=0
+
+!Modified Subgradient Parameters Initializations
+Lamb:=0
+C_MS:=0
+forall(i in 1..I) MS(i):= 0
+
+!Multuipliers Initializations
+!First Multiplier
+forall(i in 1..I) do
+	Pi(i):= Cost(i,1)
+	forall(j in 1..J) do
+		if (Pi(i) < Cost_tmp(i,j) and Cost_tmp(i,j)<>M) then
+			Pi(i) := Cost_tmp(i,j)
+		end-if
+	end-do
+end-do
+!forall(i in 1..I) writeln("Pi(",i,")= ",Pi(i))
+
+!Secound Multiplier
+InCost_tmp:= 0
+forall (j in 1..J) do
+	Omega:= InCost(1)
+	if (Omega > InCost(j)) then
+		Omega := InCost(j)
+	end-if
+end-do
+
+!forall (j in 1..J) writeln("Omega:=", Omega)
+
+!Setting congestion cost
+Max_cost:= 0
+forall(i in 1..I) do
+	forall(j in 1..J) do
+		if(Max_cost < Cost_tmp(i,j) and Cost_tmp(i,j)<>M) then
+			Max_cost:= Cost_tmp(i,j)
+		end-if
+	end-do
+end-do
+
+forall (j in 1..J) do 
+	T(j):= Max_cost
+!	writeln("Max_cost= ",Max_cost," T(",j,")= ",T(j))
+end-do
+
+!Upper Bound Initialization
+forall(j in 1..J) Fix_o(j):=0	!Set all facilities close
+
+!!!!!!!!!!! Strategies
+X:=0
+if (J = P) then
+	forall (j in 1..J) do
+		Fix_o(j):=1
+		Server(j):=1
+	end-do
+else
+	if (J < P) then 
+		forall(j in 1..J) do
+			Fix_o(j):=1
+			Server(j):=floor(P/J)	
+		end-do
+		X:= P-(J*floor(P/J))
+		forall(j in 1..X) Server(j):= Server(j)+1
+		!Server(1):= Server(1)+ X
+	else
+		if (J > P) then
+			forall (j in 1..P) do
+				Fix_o(j):=1
+				Server(j):=1
+			end-do
+		end-if
+	end-if
+end-if
+
+forall(j in 1..J) writeln ("Fix_o(",j,"):=", Fix_o(j)," Server(",j,")= ", Server(j))
+Fou1:= 0
+Fou2:= 0
+
+writeln("W= ",W)
+forall(j in 1..J) do
+	!m_Cap(j):= m_server(j)*Mu
+	!m_Cap(j):= ((W+Server(j)) - sqrt((W+Server(j))^2+(2*Server(j)-Cs)*(Ca-2*W)))*Server(j)*Mu/(2*Server(j)-Cs)
+	m_Cap(j):= Newton(W, Server(j), Mu)
+	!writeln("m_Cap(",j,")= ",m_Cap(j)," Nominal Cap= ", m_server(j)*Mu)
+end-do
+
+F:= sum(j in 1..J) m_Cap(j)
+writeln("Total capacity= ", F, " Total demand= ", Total_demand)
+if F <= Total_demand then
+	writeln("We are lack of capacity")
+	exit(1)
+end-if	
+
+forall(i in 1..I, j in 1..J) do
+		if Dem(i) > m_Cap(j) then
+			Cost_tmp(i,j):= M
+		else
+			Cost_tmp(i,j):= Cost(i,j)
+		end-if			
+end-do
+
+!forall (i in 1..I, j in 1..J) writeln ("Cost (",i,",", j,")=", Cost_tmp(i,j))
+				
+
+SSTP_Reg (InCost, Cost_tmp, m_Cap, Dem, Fix_o, R_Sol, R_c_Dem, R_Util, R_Wip, Server)
+OV_Reg:= OV_SSTP
+!writeln("*** OV_Reg: ", OV_Reg)
+
+SSTP_LarDem (InCost, Cost_tmp, m_Cap, Dem, Fix_o, L_Sol, L_c_Dem, L_Util, L_Wip, Server)
+OV_LarDem:= OV_SSTP
+!writeln("*** OV_LarDem: ", OV_LarDem)
+
+if Fou1 = 0 and Fou2 = 0 then
+	writeln("This problem is not feasible")
+	exit(1)
+end-if
+
+if (OV_Reg <= OV_LarDem) then
+	OV_SSTP:= OV_Reg
+	forall( i in 1..I) Sol(i):= R_Sol(i)
+	forall( j in 1..J) do
+		c_Dem(j):= R_c_Dem(j)
+		Util(j):= R_Util(j)
+		Wip(j):= R_Wip(j)
+	end-do	
+	!writeln("OV_SSTP is picked up from Regret Heuristic")
+else
+	OV_SSTP:= OV_LarDem
+	forall( i in 1..I) Sol(i):= L_Sol(i)
+	forall( j in 1..J) do
+		c_Dem(j):= L_c_Dem(j)
+		Util(j):= L_Util(j)
+		Wip(j):= L_Wip(j)
+	end-do	
+	!writeln("OV_SSTP is picked up from Largest Demand Heuristic")
+end-if	
+
+UB:= OV_SSTP
+writeln("==========================")
+writeln("Initial Value of UB: ", UB)
+forall(i in 1..I) writeln("Sol(",i,")= ",Sol(i))
+forall(j in 1..J)
+	writeln("c_Dem(",j,")= ",c_Dem(j)," Util(",j,")= ",Util(j),
+			" Wip(",j,")= ",Wip(j)," Server(",j,")= ",Server(j)," Fix_o(",j,")= ",Fix_o(j))
+
+!iterations begin
+C:= 0
+while (C <= 1000 ) do
+	writeln("Iteration ",C)
+	DyPro (Dem, Cost, m_server, P, Cap, Soldp)
+
+	if (OV_DyPro > LB and OV_DyPro < UB and OV_DyPro <> 0 ) then
+		writeln("**********************")
+		writeln("Update LB from: ",LB)
+		LB:= OV_DyPro
+		writeln("            to: ",LB)
+		writeln("**********************")
+		
+		forall(j in 1..J) do
+			c_Fix_o(j):= Fix_y(j)
+			c_m_server(j):= m_server(j)
+			writeln("c_Fix_o(",j,")= ",c_Fix_o(j)," c_m_server(",j,")= ",c_m_server(j))
+		end-do	
+	else
+		if LB = OV_DyPro then
+			s_check+=1
+		else
+			s_check:=0
+		end-if
+		
+		check+=1
+		writeln("check= ", check)
+		if check > 5 then
+			ss:= ss/2
+			tav:= tav/2
+			
+			!Update Upper Bound
+			Fou1:= 0
+			Fou2:= 0
+			!writeln("**********************")
+			writeln("Updating UB")
+		
+			forall(j in 1..J) Fix_o(j):= c_Fix_o(j)
+			
+			match:= 0
+			num_s:= sum(j in 1..J) c_m_server(j)
+			if num_s >0 and num_s <= P then
+				match:= 1
+			end-if	 
+			!forall(j in 1..J) do
+			!	if (Server(j) <> c_m_server(j)) then
+			!			match:= 1
+			!	end-if
+			!end-do
+			
+			if match = 0 then
+				m_J:= sum(j in 1..J) Fix_o(j)
+				X:=0
+				if (m_J = P) then
+					forall (j in 1..J) do
+						if Fix_o(j)=1 then
+							Server(j):=1
+						end-if	
+					end-do
+				else
+					if (m_J < P) then 
+						forall(j in 1..J) do
+							if Fix_o(j)=1 then
+								Server(j):=floor(P/J)
+							end-if		
+						end-do
+						X:= P-(m_J*floor(P/m_J))
+						forall(j in 1..X) do
+							if Fix_o(j)= 1 then
+								Server(j):= Server(j)+1
+								!Server(1):= Server(1)+ X
+							end-if
+						end-do	
+					else
+						if (m_J > P) then
+							forall (j in 1..P) do
+								if Fix_o(j)=1 then
+									Server(j):=1
+								end-if	
+							end-do
+						end-if
+					end-if
+				end-if
+			else	
+				forall(j in 1..J) do
+					Server(j):= c_m_server(j)
+				end-do
+			end-if	
+			
+			forall(j in 1..J) do
+				if Fix_o(j) = 1 then
+					writeln("Server(",j,")= ",Server(j))
+					!m_Cap(j):= 
+					!	((W+Server(j))-sqrt((W+Server(j))^2+(2*Server(j)-Cs)*(Ca-2*W)))*Server(j)*Mu/(2*Server(j)-Cs)
+					m_Cap(j):= Newton(W, Server(j), Mu)
+				else
+					m_Cap(j):= 0
+				end-if			
+			end-do
+			
+			F:= sum(j in 1..J) m_Cap(j)
+			writeln("Total capacity= ", F, " Total demand= ", Total_demand)
+			if F<= Total_demand then
+				writeln("We lack of capacity, Itr=", C)
+				T_server:=sum(j in 1..J) c_m_server(j)
+				forall(j in 1..J) do
+					if Fix_o(j)=1 then
+						Server(j):= ceil(P*c_m_server(j)/T_server)
+					else	
+						Server(j):= 0
+					end-if	
+				end-do
+				forall(j in 1..J) do
+					if Fix_o(j) = 1 then
+						writeln("Server(",j,")= ",Server(j))
+						m_Cap(j):= 
+							((W+Server(j))-sqrt((W+Server(j))^2+(2*Server(j)-Cs)*(Ca-2*W)))*Server(j)*Mu/(2*Server(j)-Cs)
+						m_Cap(j):= Newton(W, Server(j), Mu)
+					else
+						m_Cap(j):= 0
+					end-if			
+				end-do
+				F:= sum(j in 1..J) m_Cap(j)
+				writeln("Total capacity= ", F, " Total demand= ", Total_demand)
+					
+				if F<= Total_demand then
+					writeln("We lack of capacity")
+					exit(1)
+				end-if	
+			end-if	
+		
+			forall(i in 1..I, j in 1..J) do
+				if Dem(i) > m_Cap(j) then
+					Cost_tmp(i,j):= M
+				else
+					Cost_tmp(i,j):= Cost(i,j)
+				end-if			
+			end-do
+			
+			SSTP_Reg (InCost, Cost_tmp, m_Cap, Dem, Fix_o, R_Sol, R_c_Dem, R_Util, R_Wip, Server)
+			
+			if Fou1=0 then
+				writeln("Fail to find a feasible solution from Regret Heuristic")
+				OV_Reg:= M
+			else
+				OV_Reg:= OV_SSTP
+				writeln("C= ",C,", OV_Reg= ", OV_Reg)
+				!forall(j in 1..J) writeln("Sol_Reg(",j,")= ",Sol_sstp(j))
+			end-if	
+
+			SSTP_LarDem (InCost, Cost_tmp, m_Cap, Dem, Fix_o, L_Sol, L_c_Dem, L_Util, L_Wip, Server)
+			
+			if Fou1=0 then
+				writeln("Fail to find a feasible solution from Largest Demand Heuristic")
+				OV_LarDem:= M
+			else
+				OV_LarDem:= OV_SSTP
+				writeln("P= ",C,", OV_LarDem= ", OV_LarDem)
+				!forall(j in 1..J) writeln("Sol_LarDem(",j,")= ",Sol_sstp(j))
+			end-if	
+
+			if (OV_Reg < M) and (OV_Reg <= OV_LarDem) then
+				OV_SSTP:= OV_Reg
+				writeln("OV_SSTP is picked from Max Reg")
+				forall( i in 1..I) Sol(i):= R_Sol(i)
+				forall( j in 1..J) do
+					c_Dem(j):= R_c_Dem(j)
+					Util(j):= R_Util(j)
+					Wip(j):= R_Wip(j)
+				end-do	
+			else 
+				if (OV_LarDem < M) and (OV_LarDem < OV_Reg) then
+					OV_SSTP:= OV_LarDem
+					writeln("OV_SSTP is picked from Max Demand")
+					forall( i in 1..I) Sol(i):= L_Sol(i)
+					forall( j in 1..J) do
+						c_Dem(j):= L_c_Dem(j)
+						Util(j):= L_Util(j)
+						Wip(j):= L_Wip(j)
+					end-do	
+				end-if	
+			end-if
+			
+			if (Fou1 = 0 and Fou2 = 0) then
+				writeln("Can't found feasible solution for UB")
+			end-if	
+	
+			if (OV_SSTP > LB and UB > OV_SSTP and (Fou1 <> 0 or Fou2 <> 0)) then
+				writeln("*************************")
+				writeln("UB is updated from: ",UB)
+				UB:= OV_SSTP
+				writeln("                to: ",UB)
+				writeln("+++++++++++++++++++++++++")
+				forall(i in 1..I) writeln("Sol(",i,")= ", Sol(i))
+				forall(j in 1..J) writeln("c_Dem(",j,")= ",c_Dem(j)," Util(",j,")= ",Util(j),
+								" Server(",j,")= ",Server(j)," Fix_o(",j,")= ",Fix_o(j))
+			else
+				writeln("+++++++++++++++++++++++++")		
+				writeln("No Update UB this time")
+				writeln("+++++++++++++++++++++++++")		
+			end-if
+			check:=0
+		end-if	
+	end-if
+	!Checking Stopping Conditions
+	Gap:= (UB-LB)/UB
+	if UB < LB then
+		writeln("UB is smaller than LB. Iteration= ",C)
+	else
+		writeln("UB= ",UB," LB= ",LB," Gap at iteration ",C,"  ",Gap)
+	end-if				
+	
+	Done:=0
+	if (Gap <0.05 and Gap >= -0.01) then
+		writeln(File,": Closed to the optimal ","C: ",C ," UB: ", UB," LB: ",LB," Gap: ", Gap)
+		writeln(" Time: ",gettime-starttime)
+		Done:=1
+	end-if
+	if (ss <0.00005 and tav <0.00005) then
+		writeln(File,": This is we do most ","P: ",C," UB; ", UB," LB: ",LB," Gap: ", Gap)
+		writeln(" Time: ",gettime-starttime)
+		Done:=1
+	end-if
+	if (s_check >= 20) then
+		writeln(File,": Same lower bounds are repeated ", s_check," times")
+		writeln(" Time: ",gettime-starttime)
+		Done:=1		
+	end-if
+	
+	if Done = 1 then
+		forall(i in 1..I) writeln("Sol(",i,")= ", Sol(i)," Dem(",i,")= ",Dem(i))
+		forall(j in 1..J) writeln("c_Dem(",j,")= ",c_Dem(j)," Util(",j,")= ",Util(j)," Wip(",j,")= ",Wip(j),
+								" Server(",j,")= ",Server(j), " m_Cap(",j,")= ",m_Cap(j))
+		!" Fix_o(",j,")= ",Fix_o(j),
+		exit(1)
+	end-if		
+	
+	C+=1
+	C_MS:=0
+	!Update Lagrangian Multipliers
+	forall(i in 1..I) do
+		Sub_sum(i):= sum(j in 1..J) Soldp(i,j)
+		!forall (j in 1..J) writeln("Sol_sub(",i,",",j,")= ", Sol_sub(i,j))
+		VK:= 1 - Sub_sum(i)
+	
+		if MS(i)*VK < 0 then
+			Lamb:= -0.0005*MS(i)*VK/(MS(i)^2)
+		else
+			Lamb:= 0
+		end-if			
+		
+		MS(i):=VK + Lamb*MS(i)
+		C_MS:= C_MS + MS(i)^2
+	end-do	
+	
+	forall(i in 1..I) do
+		!forall (j in 1..J) writeln("Sol_sub(",i,",",j,")= ", Sol_sub(i,j))
+		if Sub_sum(i) = 1 then
+			tt:= 0
+		else	 
+			tt:=ss*(UB - OV_DyPro)/C_MS
+			!writeln("tt= ",tt," ss= ",ss," Sol_int= ",Sol_int)
+		end-if	
+		Pi(i):= Pi(i)+tt*MS(i)
+		!writeln("pi(",i,")= ",pi(i)," tt= ",tt," Sub_sum(",i,")= ",Sub_sum(i))		
+	end-do
+	forall (i in 1..I) do
+		if Pi(i) <0 then 
+			Pi(i) :=0
+		end-if
+	end-do
+	sum_server:= sum(j in 1..J) m_server(j)
+
+	UK:= P - sum_server
+
+	if MSS*UK < 0 then
+		Delta:= -0.0005*MSS*UK/(MSS^2)
+	else
+		Delta:= 0
+	end-if
+	
+	MSS:= UK + Delta*MSS
+			
+	if (sum_server = P) then
+		epsi:= 0.0
+	else	
+		epsi:= tav*(UB - OV_DyPro)/MSS
+	end-if
+	
+	Omega:= Omega + epsi*(MSS)	
+end-do
+
+!writeln("Limited interations ","C: ",C," UB; ", UB," LB: ",LB," Gap: ", Gap)
+
+!!!!!! Newton Method !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+function Newton(W: real, M: integer, Mu: real): real	
+	Rep:= 0
+	declarations
+		L_old: real
+		L_new: real
+		F: real
+		Fa: real
+		Fb: real
+		Fp: real
+		Fp_nu: real
+		Fp_nu1: real
+		Fp_nu2: real
+		Fp_nu11: real
+		Fp_nu12: real
+		Fp_de: real
+		Diff: real
+		m_Diff: real
+		m_L_new: real
+		m_L_old: real
+		m_Rep: integer
+	end-declarations
+
+	m_Diff:= 100
+	L_new:= 5
+
+	while ((m_Diff >= 0.01) and (Rep <= 10000)) do  
+		L_old:= L_new
+
+		Fa:= -1 + sqrt(2*(1+M))
+		Fb:= L_old/(M*Mu)
+	
+		F_nu:= Fb^Fa
+		F:= -W + L_old/Mu + L_old*F_nu/(-L_old+M*Mu)
+	
+		Fp_nu11:= L_old/(M*Mu)
+		Fp_nu12:= sqrt(2*(1+M))
+		Fp_nu1:= Fp_nu11^Fp_nu12
+	
+		Fp_nu2:= L_old - sqrt(2*(1+M))*L_old + M*Mu*sqrt(2*(1+M))
+	
+		Fp_nu:= Mu*Fp_nu1*Fp_nu2
+	
+		Fp_de:= L_old*(L_old - M*Mu)
+	
+		Fp:= L_old/Mu + M*(-1 + Fp_nu/Fp_de)
+	
+		L_new:= L_old - F/Fp
+	
+		!writeln("Rep= ",Rep," L_new= ", L_new)
+	
+		Diff:= abs(L_new - L_old)
+		if m_Diff > Diff then
+			m_Diff:= Diff
+			m_L_old:= L_old
+			m_L_new:= L_new
+			m_Rep:= Rep
+		end-if
+	
+		if L_new <= 0 or L_new >= M*Mu then
+			while ((L_new >= M*Mu) or (L_new <= 0)) do
+				L_new:= M*Mu*random
+			end-do	
+			!writeln("Changed--> L_new= ", L_new)
+		end-if
+		Rep:=Rep+1	
+	end-do	
+	!writeln("m_Rep= ",m_Rep," m_Diff= ",m_Diff," m_L_old= ",
+	!		m_L_old," m_L_new= ",m_L_new)
+	
+	returned:= (m_L_old + m_L_new)/2  
+end-function
+
+!!!!!!!!!!!!!!!!!!!!!!!!! Dynamic Programming Algorithm !!!!!!!!!!!!!!!!!!!!!!!!!
+procedure DyPro (Dem: array (range) of real,
+				 Cost: array (range, range) of real,
+				 m_server: array (range) of integer,
+				 P: integer,
+				 Cap: array (range) of real,
+				 Soldp: array (range, range) of integer)
+declarations
+	k_Max: integer
+	Cap_Max: real
+end-declarations
+
+!k_Max:= ceil ( (W+P - sqrt( (W+P)^2+( ((2*P)-Cs)*(Ca-(2*W)) )))*P*Mu /((2*P)-Cs))
+k_Max:= 0
+while (k_Max <= 0) do
+	k_Max:= ceil(Newton(W, P, Mu))
+end-do	
+!writeln("k_Max= ",k_Max)
+
+declarations
+	k_Min: integer
+	Ro: real				!Ro Calculation
+	w: real					!Capacity Calculation	
+	!OV_DyPro: real							!Objective Value of the Dynamic Programming
+	!Pi: array (1..I) of real
+	Omega: real
+	
+	A1_i: array(0..I,0..k_Max) of integer
+	A1_k: array(0..I,0..k_Max) of integer
+	B_i: integer
+	B_k: integer
+	
+	O_A1: real
+	O_i: integer
+	O_k: integer
+	
+	L1: real
+	L2: real
+	
+	S: array(1..I) of integer				!Set for the First Multiplier
+	A: array (0..I, 0..k_Max) of real			
+	cont: integer							!counter
+
+	Temp_Dem: integer						!temporary variable
+	Tserv: integer
+	B: integer
+	Ro_m_k: real
+	w_m_k: real
+	Ro_m_k_Dem: real
+	w_m_k_Dem: real
+	Ro_m1_k: real
+	w_m1_k: real
+	Ro_m1_k_Dem: real
+	w_m1_k_Dem: real
+	
+	tmp_server1: integer
+	tmp_server2: integer
+	tmp_server3: integer
+	c_server: array (0..I, 0..k_Max) of integer		
+end-declarations
+
+
+!!! Dynamic Programming Initialization !!!!!!!!!!!!!!!!!!
+forall (j in 1..J) do
+	O_A1:= 0
+	O_i:= 0
+	O_k:= 0
+
+	!k_Max:= minlist (ceil ( (W+P - sqrt( (W+P)^2+( ((2*P)-Cs)*(Ca-(2*W)) )))*P*Mu /((2*P)-Cs)), ceil(Dem_sum))
+	!k_Max:= minlist (ceil (Newton(W, P, Mu)), ceil(Dem_sum))
+	k1:= ceil(Dem_sum)
+	k2:= 0
+	while (k2 <= 0) do
+		k2:= ceil(Newton(W, P, Mu))
+	end-do	
+	if k1 <= k2 then
+		k_Max:= k1
+	else
+		k_Max:= k2
+	end-if			
+	!writeln("k_Max= ",k_Max," Cap_max= ", k2," Dem_sum= ", k1)
+
+	forall(i in 0..I, k in 0..k_Max) do
+		A(i,k):= 0
+		A1_i(i, k):= 0
+		A1_k(i, k):= 0
+		c_server(i,k):= 0
+	end-do
+	
+	forall(i in 1..I) S(i):= 0
+	forall(i in 1..I) do 
+		Soldp(i, j):=0
+	end-do
+	
+	m_server(j):=0
+	Fix_y(j):=0
+	tmp_server1:=0
+	tmp_server2:=0
+	tmp_server3:=0
+	Ro:=0
+	
+	!!!!!!!!!!!!!!!Step 0
+	cont:= 0
+	forall(i in 1..I) do
+		if (Cost(i,j) - Pi(i) < 0) then
+			cont := cont + 1
+			!writeln("count=", cont)
+			S(cont):= i
+		end-if
+	end-do
+
+	!forall(i in 1..I) writeln ("S(",i,")=", S(i))
+
+	if cont > 0 then
+		k_Min:= ceil(Dem(S(1)))-1
+
+		!!!!!!!!!!!!!!!!Step 1
+		forall (i in 1..I, k in 1..k_Min) do
+			A(i,k):= 0
+			c_server(i,k):= 0
+		end-do	
+	
+		tmp_server1:= 1
+		Ro:= Dem(S(1))/(tmp_server1*Mu)
+		!writeln ("Ro(",j,")=", Ro(j))	
+		while (Ro >= 1) do			 
+			tmp_server1:= tmp_server1+1			
+			Ro:= Dem(S(1))/(tmp_server1*Mu)
+		end-do		
+		
+		!w:= (Ca+Ro^2*Cs)/(2*(1-Ro))+(tmp_server1*Ro)
+		w:= Ro^(sqrt(2*(tmp_server1+1)))/(1-Ro) + tmp_server1*Ro
+		
+		while (w>= W) do
+			tmp_server1:= tmp_server1+1	
+			Ro:= Dem(S(1))/(tmp_server1*Mu)				
+			while (Ro >= 1) do			 
+				tmp_server1:= tmp_server1+1		
+				Ro:= Dem(S(1))/(tmp_server1*Mu)
+			end-do		
+		
+			!w:= (Ca+Ro^2*Cs)/(2*(1-Ro))+(tmp_server1*Ro)
+			w:= Ro^(sqrt(2*(tmp_server1+1)))/(1-Ro) + tmp_server1*Ro	
+		end-do
+
+		forall(k in k_Min+1 .. k_Max) do
+			A(1, k):= (Cost(S(1),j)*Dem(S(1))-Pi(S(1)))+ T(j)*w+
+			          (InCost(j)-Omega)*tmp_server1+Fix(j)
+			c_server(1,k):=tmp_server1
+			A1_i(1, k):= 1
+			A1_k(1, k):= k_Min+1
+		end-do			
+			
+		!!!!!!!!!!!!!!!!!Step 2
+		forall(k in k_Min +1 .. k_Max) do	
+			forall (i in 2..cont) do
+				if (Dem(S(i))> k) then
+					A(i, k):= A(i-1, k)
+					A1_i(i,k):= A1_i(i-1, k)
+					A1_k(i,k):= A1_k(i-1, k)
+					c_server(i,k):= c_server(i-1,k)
+				else
+					B:= ceil(Dem(S(i)))
+					if B <= k_Min then
+						O_k:= B
+					else
+						O_k:= B + A1_k(i-1,k-B)
+					end-if
+					
+					!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Ro values
+					tmp_server2:=1
+					Ro_m_k:= k /(tmp_server2*Mu)
+					while (Ro_m_k>= 1) do			 
+						tmp_server2:= tmp_server2+1		
+						Ro_m_k:= k /(tmp_server2*Mu)
+					end-do
+			
+					!w_m_k:= (Ca+Ro_m_k^2*Cs)/(2*(1-Ro_m_k))+(tmp_server2*Ro_m_k)
+					w_m_k:= Ro_m_k^(sqrt(2*(tmp_server2+1)))/(1-Ro_m_k) + tmp_server2*Ro_m_k
+		
+					while (w_m_k >= W) do
+						tmp_server2:= tmp_server2 + 1		
+						Ro_m_k:= k /(tmp_server2*Mu)	
+						while (Ro_m_k >= 1) do			 
+							tmp_server2:= tmp_server2 + 1			
+							Ro_m_k:= k /(tmp_server2*Mu)
+						end-do
+						!w_m_k:= (Ca+Ro_m_k^2*Cs)/(2*(1-Ro_m_k))+(tmp_server2*Ro_m_k)
+						w_m_k:= Ro_m_k^(sqrt(2*(tmp_server2+1)))/(1-Ro_m_k) + tmp_server2*Ro_m_k		
+					end-do	
+
+					!!!!!!!!!!!!!!
+					Ro_m_k_Dem:= (k-Dem(S(i)))/(tmp_server2*Mu)
+				
+					!w_m_k_Dem:= (Ca+Ro_m_k_Dem^2*Cs)/(2*(1-Ro_m_k_Dem))+(tmp_server2*Ro_m_k_Dem)
+					w_m_k_Dem:= Ro_m_k_Dem^(sqrt(2*(tmp_server2+1)))/(1-Ro_m_k_Dem) + tmp_server2*Ro_m_k_Dem
+
+					!!!!!!!!!!!!!!!!!
+					Ro_m1_k:= k /((tmp_server2+1)*Mu)				
+		
+					!w_m1_k:= (Ca+Ro_m1_k^2*Cs)/(2*(1-Ro_m1_k))+((tmp_server2+1)*Ro_m1_k)
+					w_m1_k:= Ro_m1_k^(sqrt(2*(tmp_server2+2)))/(1-Ro_m1_k) + (tmp_server2+1)*Ro_m1_k		
+		 
+					!!!!!!!!!!!!!!!!!
+					Ro_m1_k_Dem:= (k-Dem(S(i)))/((tmp_server2+1)*Mu)
+					
+					!w_m1_k_Dem:= (Ca+Ro_m1_k_Dem^2*Cs)/(2*(1-Ro_m1_k_Dem))+((tmp_server2+1)*Ro_m1_k_Dem)
+					w_m1_k_Dem:= Ro_m1_k_Dem^(sqrt(2*(tmp_server2+2)))/(1-Ro_m1_k_Dem) + (tmp_server2+1)*Ro_m1_k_Dem
+
+					!!!!!!!!!!!!!!!!!!!!!!	
+					L1:= A(i-1, k-B)+ (Cost(S(i), j)*Dem(S(i))) - Pi(S(i)) +T(j)*(w_m_k-w_m_k_Dem)+
+						 (InCost(j)-Omega)*(tmp_server2-c_server(i-1, k-B))
+					L2:= A(i-1, k-B) + (Cost(S(i), j)*Dem(S(i))) - Pi(S(i)) +T(j)*(w_m1_k-w_m1_k_Dem)+ 
+						 (InCost(j)-Omega)*(tmp_server2+1-c_server(i-1, k-B))
+					L3:= A(i-1, k)
+				
+					if (L3<=L1 and L3<=L2) then
+						A(i, k):= A(i-1, k)
+						c_server(i, k):= c_server(i-1, k)	
+						A1_i(i, k):= A1_i(i-1, k)
+						A1_k(i, k):= A1_k(i-1, k)
+					else
+						if (L1 <= L2 and L1 <L3) then 
+							A(i, k):= L1
+							c_server(i, k):= tmp_server2
+							A1_i(i, k):= i
+							A1_k(i, k):= O_k
+						else 
+							if (L2< L1 and L2 <L3) then
+								A(i, k):= L2
+								c_server(i, k):= tmp_server2+1
+								A1_i(i, k):= i
+								A1_k(i, k):= O_k
+							end-if
+						end-if
+					end-if		
+				end-if
+			end-do
+		end-do
+	
+		!Finding which facility should be open		
+		if (A(cont, k_Max) < 0 ) then
+			Fix_y(j):=1
+			m_server(j):= c_server(A1_i(cont, k_Max),A1_k(cont, k_Max))
+		else			
+			Fix_y(j):=0
+			m_server(j):=0
+		end-if
+	
+		!Back Tracking Procedure for finding the X(i,j)		
+		if (A(cont, k_Max) < 0 ) then
+			m_k:= k_Max
+			B_i:= A1_i(cont,m_k)
+			B_k:= A1_k(cont,m_k)
+			while (B_i > 0 and B_k > 0) do
+				if B_k = m_k then
+					Soldp(B_i,j):= 1
+					!writeln("Soldp(",B_i,",",j,")= ", Soldp(B_i,j),
+					!		" A1(",B_i,",",B_k,")= ",A(B_i,B_k),
+					!		" c_server(",B_i,",",B_k,")= ",c_server(B_i,B_k))
+					m_i:= B_i
+					m_k:= B_k-ceil(Dem(S(B_i)))		
+					B_i:= A1_i(m_i-1,m_k)
+					B_k:= A1_k(m_i-1,m_k)
+					!writeln("B_i= ",B_i," B_k= ",B_k)
+				else
+					Soldp(B_i,j):= 0
+					m_i:= B_i		
+					m_k:= B_k
+					B_i:= A1_i(m_i,m_k)
+					B_k:= A1_k(m_i,m_k)
+				end-if			
+			end-do
+		end-if
+	
+	end-if
+	
+	tbl_A(j):= A(cont, k_Max)
+	!writeln("tbl_A(",j,")=", tbl_A(j))
+	
+	!forall(i in 1..I) do
+	!	writeln("Soldp(",i,",", j,")=", Soldp(i, j)," Dem(",i,")= ",Dem(i))
+	!end-do	
+	
+	!writeln("m_server(",j,")= ",m_server(j))
+
+!!!!!!!!!!!!!!!The Main Loop!!!!!!!!!!!!!!!
+end-do
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+Sum_A:= sum(j in 1..J) (tbl_A(j))
+!writeln("Sum_A=", Sum_A)
+OV_DyPro:= ( sum(j in 1..J) (tbl_A(j)*Fix_y(j)) ) + sum(i in 1..I)Pi(i)+ Omega*P
+writeln("DP Objective Value=", OV_DyPro)
+forall(j in 1..J) writeln("Fix_y(",j,")= ",Fix_y(j)," m_server(",j,")= ",m_server(j))
+
+end-procedure
+
+!!!!!!!!!!!!!!!!! Single Source Transportation Problem Largest Demand Heuristic!!!!!!!!!!!!!!!!!!!!
+procedure SSTP_LarDem (InCost: array (range) of real,
+						Cost: array(range, range) of real,
+						m_Cap: array (range) of real,
+						Dem: array(range) of real,
+						Fix_o: array (range) of integer,
+						Sol: array (range) of integer,
+						c_Dem: array (range) of real,
+						Util: array (range) of real,
+						Wip: array (range) of real,
+						Server: array (range) of integer)
+								
+declarations 
+	InCost_tmp: real
+	Y: integer
+	Big: real
+	Pick_i: integer
+	Assign: integer
+	
+	SSTP_InCost: array (1..J) of real
+	SSTP_Cost: array(1..I, 1..J) of real
+	SSTP_Cap: array (1..J) of real
+	SSTP_Dem: array(1..I) of real
+	
+	U: array(1..I) of real				!set of Unassigned uses
+	S_j: array (1..I) of real			!set of the sources
+	Sigma: array(1..I) of real    		!Cost gap
+	Order: array(1..I,1..J) of integer 	!Ordered indexes by cost
+	O_tmp: integer
+	Select: array(1..I,1..J) of integer
+	Sol_y: array(1..J) of real
+	!c_Dem: array(1..J) of real 
+	!util: array(1..J) of real
+	!Wip: array(1..J) of real
+	up_m_server: array(1..J) of integer
+end-declarations 
+
+!Initialization
+forall(j in 1..J) do
+	SSTP_InCost(j):= InCost(j)
+	SSTP_Cap(j):= m_Cap(j)
+	Sol_y(j):= 0
+	OV_SSTP:=0
+end-do
+
+
+forall (i in 1..I, j in 1..J) SSTP_Cost(i, j):= Cost(i, j) 
+forall(i in 1..I) SSTP_Dem(i):= Dem(i)
+
+!initialize U and Order
+forall(i in 1..I) do
+	U(i):= i
+	forall(j in 1..J) do
+		Order(i,j):=j
+	end-do
+end-do
+
+while (Assign=0) do
+		!Block source with lack of capacity
+		forall(i in 1..I) do
+			forall(j in 1..J) do
+				if SSTP_Dem(i)>SSTP_Cap(j) then
+					SSTP_Cost(i,j):=M
+				end-if
+			end-do
+		end-do	
+		!Ordering cost
+		forall(i in 1..I) do
+			forall(m in 1..J) do
+				forall(j in 1..J-m) do
+					if SSTP_Cost(i,Order(i,j)) > SSTP_Cost(i,Order(i,j+1)) then
+						O_tmp:= Order(i,j)
+						Order(i,j):= Order(i,j+1)
+						Order(i,j+1):= O_tmp
+					end-if				
+				end-do
+			end-do
+		end-do
+		!forall(i in 1..I, j in 1..J) writeln("Cost(",i,",",Order(i,j),")= ",Cost(i,Order(i,j)))
+
+		!Calculate Sigma
+		forall(i in 1..I) do
+			Sigma(i):= SSTP_Cost(i,Order(i,3))-SSTP_Cost(i,Order(i,1))
+		end-do
+
+		!Checking feasibility
+		forall(i in 1..I) do
+			if (U(i)< M) then
+				if (SSTP_Cost(i,Order(i,1))= M) then
+					writeln("infeasible solution - MMMM")
+					OV_SSTP:= M
+					Fou2:=0
+					Assign:= 1
+					exit(1)
+				end-if
+			end-if	
+		end-do
+
+		!find i with the bigest demand
+		Big:= 0
+		forall(i in 1..I) do
+			if (U(i) < M) then
+				if (SSTP_Dem(i) >= Big) then
+					Big:= SSTP_Dem(i)
+					Pick_i:= i
+				end-if	
+			end-if
+		end-do	
+
+		!Build set S and pick j ramdomly for assignment
+		forall(j in 1..J) do
+			Select(Pick_i,j):= 0
+		end-do	
+
+		Y:= 0
+		forall(j in 1..J) do
+			if (SSTP_Cost(Pick_i,j)< M and Fix_o(j)=1) then
+				if (SSTP_Cost(Pick_i,j) - SSTP_Cost(Pick_i,Order(Pick_i,1))) <= Sigma(Pick_i) then
+					Y:= Y+1
+					Select(Pick_i,Y):= j
+				end-if
+			end-if	
+		end-do
+
+		if (Y > 0) then
+			r:= integer(round((10*random)+0.5))
+			d:= r mod Y
+			if (d = 0) then
+				Pick_j:= Select(Pick_i,Y)
+			else
+				Pick_j:= Select(Pick_i,d)
+			end-if
+		
+			if(Pick_j=0) then
+				writeln("You choose 0 index")
+				exit(1)
+			end-if	
+
+			!Update values
+			U(Pick_i):= M
+			OV_SSTP:= OV_SSTP + SSTP_Cost(Pick_i,Pick_j)*SSTP_Dem(Pick_i)
+			SSTP_Cap(Pick_j):= SSTP_Cap(Pick_j) - SSTP_Dem(Pick_i)
+			SSTP_Dem(Pick_i):= 0
+			Sol(Pick_i):= Pick_j
+			Sol_y(Pick_j):= 1
+		
+			Pick_i:= 0
+			Pick_j:= 0 
+
+			m:=0
+			forall(i in 1..I) do
+				if (U(i) = M) then
+					m:= m+1
+				end-if
+			end-do	
+
+			if m = I then
+				Assign:= 1
+			end-if
+			
+			forall(j in 1..J) c_Dem(j):=0
+
+			if (Assign = 1) then
+				forall(i in 1..I) c_Dem(Sol(i)):= c_Dem(Sol(i))+Dem(i)
+	
+				forall(j in 1..J) do
+					if Sol_y(j) = 0 then
+						Server(j):= 0
+						Fix_o(j):= 0
+						Util(j):= 0
+						Wip(j):= 0
+					else
+						if Sol_y(j) = 1 then
+							Util(j):= c_Dem(j)/(Server(j)*Mu)
+							if Util(j) > 1 then
+					 			writeln("infeasible solution - Overloaded")
+					 			exit(1)
+							else	
+					    		if Util(j) = 1 then 
+									Util(j):=0.99
+					    		end-if		    
+							end-if	
+							Wip(j):=(Ca + ((Util(j)^2)*Cs))/(2*(1-Util(j)))+ Server(j)*Util(j)
+						end-if
+					end-if	
+				end-do
+			
+				!forall(j in 1..J) 
+					!writeln("WIP(",j,")= ",Wip(j)," Util(",j,")= ",Util(j)," c_Dem(",j,")= ",c_Dem(j))
+				
+				OV_SSTP:= OV_SSTP + sum(j in 1..J) ( (Sol_y(j)*Fix(j)) + ( Sol_y(j)*T(j)*Wip(j) ) + (SSTP_InCost(j)*Server(j)) )
+	
+					!writeln("Found feasible solutions+++")
+					!writeln("Upper Bound_LarDem= ", OV_SSTP)
+					OV_LarDem:= OV_SSTP
+				Fou2:=1
+			end-if
+		else
+			Assign:= 1
+			Fou2:=0
+			writeln("Didn't find feasible solution, Itr= ", C)
+		end-if				
+	end-do
+	writeln("Fou2= ",Fou2)
+	!forall (i in 1..I) writeln("Sol(",i,")= ",Sol(i)," Demand(",i,")= ",Dem(i))
+	!forall (j in 1..J) writeln("m_Cap(",j,")= ",m_Cap(j))
+end-procedure
+
+!!!!!!!!!!!!!!!!! Single Source Transportation Problem Regret Heuristic!!!!!!!!!!!!!!!!!!!!
+procedure SSTP_Reg (InCost: array (range) of real,
+					Cost: array(range, range) of real,
+					m_Cap: array (range) of real,
+					Dem: array(range) of real,
+					Fix_o: array (range) of integer,
+					Sol: array (range) of integer,
+					c_Dem: array (range) of real,
+					Util: array (range) of real,
+					Wip: array (range) of real,
+					Server: array (range) of integer)
+declarations 
+	InCost_tmp: real
+	Y: integer
+	Big: real
+	Pick_i: integer
+	Assign: integer
+	
+	SSTP_InCost: array (1..J) of real
+	SSTP_Cost: array(1..I, 1..J) of real
+	SSTP_Cap: array (1..J) of real
+	SSTP_Dem: array(1..I) of real
+	
+	U: array(1..I) of real				!set of Unassigned uses
+	!OV_Reg: real						!the cost of current solution
+	S_j: array (1..I) of real			! set of the sources
+	Sigma: array(1..I) of real    		!Cost gap
+	Order: array(1..I,1..J) of integer 	!Ordered indexes by cost
+	O_tmp: integer
+	Select: array(1..I,1..J) of integer
+	Sol_y: array(1..J) of real
+	!c_Dem: array (1..J) of real 
+	!util: array (1..J) of real
+	!Wip: array (1..J) of real
+	up_m_server: array (1..J) of real
+end-declarations 
+
+!Initialization
+forall(j in 1..J) do
+	SSTP_InCost(j):= InCost(j)
+	SSTP_Cap(j):= m_Cap(j)
+	Sol_y(j):=0
+	OV_SSTP:=0
+end-do
+forall (i in 1..I, j in 1..J) SSTP_Cost(i, j):= Cost(i, j) 
+forall(i in 1..I) SSTP_Dem(i):= Dem(i)
+
+!initialize U and Order
+forall(i in 1..I) do
+	U(i):= i
+	forall(j in 1..J) do
+		Order(i,j):=j
+	end-do
+end-do
+
+while (Assign=0) do
+		!Block source with lack of capacity
+		forall(i in 1..I) do
+			forall(j in 1..J) do
+				if SSTP_Dem(i)>SSTP_Cap(j) then
+					SSTP_Cost(i,j):=M
+				end-if
+			end-do
+		end-do	
+
+		!Ordering cost
+		forall(i in 1..I) do
+			forall(m in 1..J) do
+				forall(j in 1..J-m) do
+					if SSTP_Cost(i,Order(i,j)) > SSTP_Cost(i,Order(i,j+1)) then
+						O_tmp:= Order(i,j)
+						Order(i,j):= Order(i,j+1)
+						Order(i,j+1):= O_tmp
+					end-if				
+				end-do
+			end-do
+		end-do
+		!forall(i in 1..I, j in 1..J) writeln("Cost(",i,",",Order(i,j),")= ",Cost(i,Order(i,j)))
+
+		!Calculate Sigma
+		forall(i in 1..I) do
+			Sigma(i):= SSTP_Cost(i,Order(i,3))-SSTP_Cost(i,Order(i,1))
+		end-do
+
+		!Checking feasibility
+		forall(i in 1..I) do
+			if (U(i)< M) then
+				if (SSTP_Cost(i,Order(i,1))= M) then
+					writeln("infeasible solution - MMMM")
+					OV_SSTP:= M
+					Fou1:=0
+					exit(1)
+				end-if
+			end-if	
+		end-do
+	
+		!Calculate Regret
+		forall(i in 1..I) do
+			if U(i)<M then
+				Reg(i):= (SSTP_Cost(i,Order(i,2)) - SSTP_Cost(i,Order(i,1)))*SSTP_Dem(i)
+			else
+				Reg(i):= M
+			end-if		
+		end-do
+
+		!Find i with biggest regret
+		Big:=0
+		forall(i in 1..I) do
+			if (U(i) < M) then
+				if (Reg(i) >= Big) then
+					Big:= Reg(i)
+					Pick_i:= i
+				end-if
+			end-if	
+		end-do
+
+		!Build set S and pick j ramdomly for assignment
+		forall(j in 1..J) do
+			Select(Pick_i,j):= 0
+		end-do	
+
+		Y:= 0
+		forall(j in 1..J) do
+			if (SSTP_Cost(Pick_i,j)< M and Fix_o(j)=1) then
+				if (SSTP_Cost(Pick_i,j) - SSTP_Cost(Pick_i,Order(Pick_i,1))) <= Sigma(Pick_i) then
+					Y:= Y+1
+					Select(Pick_i,Y):= j
+				end-if
+			end-if	
+		end-do
+
+		if (Y > 0) then
+			r:= integer(round((10*random)+0.5))
+			d:= r mod Y
+			if (d = 0) then
+				Pick_j:= Select(Pick_i,Y)
+			else
+				Pick_j:= Select(Pick_i,d)
+			end-if
+		
+			if(Pick_j=0) then
+				writeln("You choose 0 index")
+				exit(1)
+			end-if	
+
+			!Update values
+			U(Pick_i):= M
+			OV_SSTP:= OV_SSTP + SSTP_Cost(Pick_i,Pick_j)*SSTP_Dem(Pick_i)
+			SSTP_Cap(Pick_j):= SSTP_Cap(Pick_j) - SSTP_Dem(Pick_i)
+			SSTP_Dem(Pick_i):= 0
+			Sol(Pick_i):= Pick_j
+			Sol_y(Pick_j):= 1
+		
+			Pick_i:= 0
+			Pick_j:= 0 
+
+			m:=0
+			forall(i in 1..I) do
+				if (U(i) = M) then
+					m:= m+1
+				end-if
+			end-do	
+
+			if m = I then
+				Assign:= 1
+			end-if
+			
+			forall(j in 1..J) c_Dem(j):=0
+
+			if (Assign = 1) then
+				forall(i in 1..I) c_Dem(Sol(i)):= c_Dem(Sol(i))+Dem(i)
+				
+				forall(j in 1..J) do
+					if Sol_y(j) = 0 then
+						Server(j):= 0
+						Fix_o(j):= 0
+						Util(j):= 0
+						Wip(j):= 0
+					else
+						if Sol_y(j) = 1 then				
+							Util(j):= c_Dem(j)/(Server(j)*Mu)
+							if Util(j) > 1 then
+								writeln("Infeasible solution - Overloaded")
+								exit(1)
+							else 
+								if Util(j) = 1 then	 
+									Util(j):=0.99
+								end-if	
+							end-if
+						end-if	
+						Wip(j):=(Ca + ((Util(j)^2)*Cs))/(2*(1-Util(j)))+ Server(j)*Util(j)
+					end-if	
+				end-do
+				
+				!forall(j in 1..J) 
+				!writeln("WIP(",j,")= ",Wip(j)," Util(",j,")= ",Util(j)," c_Dem(",j,")= ",c_Dem(j))
+				
+				OV_SSTP:= OV_SSTP + sum(j in 1..J) ( (Sol_y(j)*Fix(j)) + ( Sol_y(j)*T(j)*Wip(j) ) + (SSTP_InCost(j)*Server(j)))
+	
+				!writeln("Found feasible solutions+++")
+				!writeln("Upper Bound_Reg= ", OV_SSTP)
+
+				Fou1:=1
+
+			end-if
+		else
+			Assign:= 1
+			Fou2:=0
+			writeln("Didn't find feasible solution, Itr= ", C)
+		end-if		
+				
+	end-do
+	writeln("Fou1= ",Fou1)
+	!forall (i in 1..I) writeln("Sol(",i,")= ",Sol(i)," Demand(",i,")= ",Dem(i))
+	!forall (j in 1..J) writeln("m_Cap(",j,")= ",m_Cap(j))
+end-procedure
+
+
+writeln(" Time: ",gettime-starttime)
+end-model
